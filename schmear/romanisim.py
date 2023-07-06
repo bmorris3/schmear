@@ -13,21 +13,21 @@ from romanisim.parameters import default_parameters_dictionary
 
 pixel_scale = 0.11 * u.arcsec / u.pix
 fov_corner_to_center = (
-    4092 * u.pix * pixel_scale
+    4088 * u.pix * pixel_scale
 ).to(u.deg)
 
 
 def _synthesize_image(
-        input_coord,
-        filt='F087', n_sources=500,
-        output_path='synthetic_image.asdf', sca=7,
-        catalog_path='star-catalog.ecsv',
-        seed=0,
-        radius=2 * fov_corner_to_center.to_value(u.deg),
-        overwrite=False,
-        faintmag=26,
-        scale_up_n_sources=13,
-    ):
+    input_coord,
+    filt='F087', n_sources=500,
+    output_path='synthetic_image.asdf', sca=7,
+    catalog_path='star-catalog.ecsv',
+    seed=0,
+    radius=2 * fov_corner_to_center.to_value(u.deg),
+    overwrite=False,
+    faintmag=26,
+    scale_up_n_sources=13,
+):
     if not os.path.exists(output_path) or overwrite:
         cat = make_stars(
             coord=input_coord, n=int(n_sources * scale_up_n_sources),

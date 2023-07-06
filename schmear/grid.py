@@ -13,9 +13,9 @@ setup_logging(level="ERROR")
 
 
 def _grid_model(
-        filt, filename, detector, oversample,
-        fov_pixels, n_psfs, visualize=False, overwrite=False,
-        expected_filename=''
+    filt, filename, detector, oversample,
+    fov_pixels, n_psfs, visualize=False, overwrite=False,
+    expected_filename=''
 ):
     # Choose pixel boundaries for the grid of PSFs:
     start_pix = 0
@@ -35,6 +35,8 @@ def _grid_model(
     if not os.path.exists(expected_filename) or overwrite:
         wfi = webbpsf.roman.WFI()
         wfi.filter = filt
+        # wfi.options['jitter'] = None
+        # wfi.options['jitter_sigma'] = 0
         filter_to_wl = (int(wfi.filter[1:]) / 100 * u.um).to_value(u.m)
 
         # Initialize the PSF library
@@ -63,11 +65,12 @@ def _grid_model(
             webbpsf.gridded_library.display_psf_grid(gridmodel)
     elif os.path.exists(expected_filename):
         logging.log(logging.INFO, "Loading existing gridded PSF model")
-        ndd = CCDData.read(expected_filename, unit=u.ct, ext=0)
+        ndd = CCDData.read(expected_filename, unit=u.electron/u.s, ext=0)
+        ndd.data = np.flip(np.flip(ndd.data, axis=2), axis=1)
         ndd.meta = dict(ndd.meta)
         ndd.meta['oversampling'] = oversample
         ndd.meta['grid_xypos'] = np.array(
-            [list(tup) for tup in location_list]
+            [list(tup)[::-1] for tup in location_list]
         )
         gridmodel = GriddedPSFModel(ndd)
 

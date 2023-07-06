@@ -21,9 +21,8 @@ class Trial:
     def __init__(self):
         # WebbPSF parameters:
         self.n_psfs = 3**2
-        self.filter = 'F087'
+        self.filter = 'F184'
         self.detector = 'SCA01'
-        self.wavelength = (int(self.filter[1:]) / 100 * u.um).to_value(u.m)
         self.oversample = 10
         self.fov_pixels = 50
 
@@ -42,7 +41,7 @@ class Trial:
 
         # photutils parameters:
         self.fit_shape = (29, 29)
-        self.crit_separation = 5
+        self.crit_separation = 15
         self.pixel_scale = PIX_SCALE
         self.photometry_cls = PSFPhotometry
 
@@ -55,20 +54,27 @@ class Trial:
         self.fit_results = None
         self.astrometric_residuals = None
         self.astrometric_rms = None
+        self.astrometric_x_rms = None
+        self.astrometric_y_rms = None
         self.relative_flux_residuals = None
         self.elapsed_time = None
 
     @property
+    def wavelength(self):
+        return (int(self.filter[1:]) / 100 * u.um).to_value(u.m)
+    
+    @property
     def path_grid(self):
         return (
-            f'grids/psf_grid_model_{self.filter}_{self.detector.lower()}.fits'
+            f'grids/psf_grid_model_{self.n_psfs}_{self.filter}_{self.faintmag}_'
+            f'{self.oversample:.0f}_{self.detector.lower()}.fits'
         )
 
     @property
     def path_image(self):
         return (
             f'{self.image_dir}/synthetic_image_{self.filter}_{self.detector}_' +
-            f'{self.n_stars:.0f}_{self.faintmag:.0f}_' + 
+            f'{self.faintmag}_{self.n_stars:.0f}_{self.faintmag:.0f}_' +
             f'{self.oversample:.0f}{self.append_to_file_path}.asdf'
         )
     
@@ -76,14 +82,14 @@ class Trial:
     def path_catalog(self):
         return (
             f'{self.image_dir}/synthetic_catalog_{self.filter}_{self.detector}_' +
-            f'{self.n_stars:.0f}_{self.faintmag:.0f}_{self.oversample:.0f}' + 
+            f'{self.faintmag}_{self.n_stars:.0f}_{self.faintmag:.0f}_{self.oversample:.0f}' +
             f'{self.append_to_file_path}.ecsv'
         )
 
     def construct_grid_model(self, visualize=False, overwrite=True):
         self.grid_model, self.location_list = _grid_model(
             filt=self.filter,
-            filename=f'grids/psf_grid_model_{self.filter}',
+            filename='_'.join(self.path_grid.split('_')[:-1]),
             expected_filename=self.path_grid,
             detector=self.detector,
             oversample=self.oversample,
@@ -110,30 +116,38 @@ class Trial:
 
     def fit_psf(self, progress_bar=False):
         self.fit_results = _fit_psf(
-            crit_separation=5,
+            crit_separation=self.crit_separation,
             gridmodel=self.grid_model,
             coords=self.true_pixel_coords,
             asdf_file=self.path_image,
             cls=self.photometry_cls,
+            fit_shape=self.fit_shape,
             progress_bar=progress_bar
         )
 
     def stats(self):
-        self.astrometric_residuals = np.array(np.hypot(
-            self.fit_results['x_init'] - self.fit_results['x_fit'],
-            self.fit_results['y_init'] - self.fit_results['y_fit']
-        ))
-        self.relative_flux_residuals = np.array((
-            (self.fit_results['flux_init'] -
-             self.fit_results['flux_fit']) /
-            self.fit_results['flux_init']
-        ))
-        self.astrometric_rms = mad_std(
-            (
-                self.astrometric_residuals * u.pix * self.pixel_scale
-            ).to(u.mas)
+        dx = self.fit_results['x_init'] - self.fit_results['x_fit']
+        dy = self.fit_results['y_init'] - self.fit_results['y_fit']
+
+        dx -= np.median(dx)
+        dy -= np.median(dy)
+        
+        self.astrometric_residuals = (
+            np.hypot(dx, dy) * u.pix * self.pixel_scale
+        ).to(u.mas)
+        
+        self.astrometric_x_rms = mad_std(
+            (dx * u.pix * self.pixel_scale).to(u.mas)
         )
 
+        self.astrometric_y_rms = mad_std(
+            (dy * u.pix * self.pixel_scale).to(u.mas)
+        )
+        
+        self.astrometric_rms = u.Quantity([
+            self.astrometric_x_rms, self.astrometric_y_rms
+        ]).mean()
+        
     def plot_residuals(self):
         return _plot_residuals(
             result_tab=self.fit_results,

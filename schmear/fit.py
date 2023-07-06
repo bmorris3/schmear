@@ -2,7 +2,7 @@ import asdf
 import numpy as np
 
 from astropy.modeling.fitting import LevMarLSQFitter
-from astropy.nddata import CCDData
+from astropy.nddata import CCDData, StdDevUncertainty
 from astropy.table import Table
 import astropy.units as u
 
@@ -12,7 +12,7 @@ from photutils.detection import DAOStarFinder
 
 
 def _fit_psf(crit_separation, gridmodel, coords, asdf_file,
-             cls, progress_bar=False):
+             cls, fit_shape, progress_bar=False):
     grouper = SourceGrouper(min_separation=crit_separation)
     fitter = LevMarLSQFitter(calc_uncertainties=True)
 
@@ -36,12 +36,12 @@ def _fit_psf(crit_separation, gridmodel, coords, asdf_file,
     photometry = cls(
         grouper=grouper,
         localbkg_estimator=LocalBackground(
-            inner_radius=2, outer_radius=50
+            inner_radius=10, outer_radius=30
         ),
         psf_model=gridmodel,
         fitter=fitter,
-        fit_shape=(29, 29),
-        aperture_radius=10,
+        fit_shape=fit_shape,
+        aperture_radius=15,
         progress_bar=progress_bar,
         **extras
     )
@@ -50,9 +50,13 @@ def _fit_psf(crit_separation, gridmodel, coords, asdf_file,
 
     with asdf.open(asdf_file) as file:
         data = np.array(file.tree['roman']['data'])
+        error = np.array(file.tree['roman']['err'])
+        mask = np.array(file.tree['roman']['dq']) != 0
 
+    error = np.clip(error, 1e-2, None)
+    
     shape = data.shape
-    buffer = 50
+    buffer = 0
     in_range = (
         (guesses['x_init'] > buffer) &
         (guesses['x_init'] < shape[0] - buffer) &
@@ -61,9 +65,8 @@ def _fit_psf(crit_separation, gridmodel, coords, asdf_file,
     )
     guesses = guesses[in_range]
 
-    ndd = CCDData(data, unit=u.ct/u.s)
     result_tab = photometry(
-        data=ndd, init_params=guesses
+        data=data, error=10 * error, init_params=guesses, mask=mask
     )
 
     return result_tab
